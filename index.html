@@ -345,9 +345,28 @@
         document.getElementById(`page-${pageNumber}`).classList.add('active');
         window.scrollTo(0,0);
 
+        // 4페이지 진입 시 동영상 강제 재생 최적화 가드 및 브라우저 락 해제
         if(pageNumber === 4) {
             const v = document.getElementById('interactive-video');
-            if(v) v.play().catch(()=>{});
+            if(v) {
+                v.muted = true; // 👈 모바일/PC 브라우저 자동 재생 차단 정책 우회를 위해 음소거 강제 재확인
+                
+                // 브라우저가 연산을 처리할 수 있도록 미세한 딜레이 후 재생 명령 전달
+                setTimeout(() => {
+                    var playPromise = v.play();
+                    
+                    if (playPromise !== undefined) {
+                        playPromise.catch(error => {
+                            // 만약 그럼에도 브라우저가 막았다면, 사용자가 화면을 건드렸을 때 즉시 재생되도록 안전장치 구성
+                            console.log("브라우저 보안으로 인해 대기 상태 전환 -> 터치 시 재생");
+                            document.getElementById('page-4').addEventListener('click', function fn() {
+                                v.play();
+                                document.getElementById('page-4').removeEventListener('click', fn);
+                            });
+                        });
+                    }
+                }, 100);
+            }
         }
     }
 
