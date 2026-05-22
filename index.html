@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>종합 멀티 다이어그램 플랫폼</title>
+    <script src="https://unpkg.com/wavesurfer.js@7"></script>
+    <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
+    <style>
+        /* 글로벌 초기화 및 페이지 마스터 레이아웃 */
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #0f172a; color: #f8fafc;
+            font-family: 'Malgun Gothic', sans-serif; overflow-x: hidden;
+        }
+
+        /* 공통 페이지 기본 구조 - 화면 중앙 정렬 강제 */
+        .page-screen {
+            display: none; width: 100%; height: 100vh; box-sizing: border-box;
+            position: relative; justify-content: center; align-items: center;
+            overflow: hidden;
+        }
+        .page-screen.active { display: flex; flex-direction: column; }
+
+        /* 좌우 여백 고정 네비게이션 버튼 배치 규칙 */
+        .nav-btn {
+            position: fixed; top: 50%; transform: translateY(-50%); z-index: 9999;
+            padding: 14px 22px; font-weight: bold; font-size: 14px; border: none;
+            border-radius: 8px; cursor: pointer; background-color: rgba(59, 130, 246, 0.85);
+            color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: all 0.2s;
+        }
+        .nav-btn:hover { background-color: #2563eb; transform: translateY(-50%) scale(1.05); }
+        .nav-prev { left: 20px; }
+        .nav-next { right: 20px; }
+
+        /* ==========================================
+           [1페이지] 픽셀 월드 메인 테마 화면 (비율 깨짐 방지 완벽 보정)
+           ========================================== */
+        #page-1 {
+            background-color: #000000; /* 여백 발생 시 채워질 기본 배경색 */
+            position: relative;
+        }
+        /* 배경 이미지가 찢어지거나 깨지지 않고 정비율로 꽉 차게 방어 */
+        .bg-pixel-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: url('픽셀 버전.jpeg') no-repeat center center;
+            background-size: contain; /* 👈 깨짐 방지 핵심: 원본 비율 무조건 유지 */
+            z-index: 1;
+        }
+        .btn-fight {
+            position: relative; z-index: 2; /* 이미지 위로 올림 */
+            padding: 18px 45px; font-size: 28px; font-weight: bold; color: #ffffff;
+            background-color: #ef4444; border: 4px solid #ffffff; cursor: pointer;
+            text-transform: uppercase; letter-spacing: 2px;
+            box-shadow: 0 0 0 4px #ef4444, 0 8px 0 4px rgba(0,0,0,0.4);
+            text-shadow: 2px 2px 0px #000; transition: transform 0.1s;
+        }
+        .btn-fight:active { transform: translateY(4px); box-shadow: 0 0 0 4px #ef4444, 0 4px 0 4px rgba(0,0,0,0.4); }
+
+        /* ==========================================
+           [2페이지] AI 주파수 분석 오디오 대시보드
+           ========================================== */
+        #page-2 { padding: 40px 100px; height: auto; min-height: 100vh; overflow-y: auto; }
+        .container { width: 100%; max-width: 750px; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 15px 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 25px; }
+        .guide-zone { display: flex; gap: 20px; }
+        .guide-item { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: bold; }
+        .color-box { width: 16px; height: 16px; border-radius: 4px; }
+        .btn-reset { background-color: #ef4444; color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 6px; cursor: pointer; }
+        .track-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; margin-bottom: 20px; position: relative; }
+        .track-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .track-info { display: flex; flex-direction: column; gap: 4px; }
+        .track-name { font-size: 13px; color: #64748b; font-weight: bold; }
+        .track-script { font-size: 17px; font-weight: bold; color: #f1f5f9; }
+        .btn-zone button { padding: 9px 15px; font-weight: bold; font-size: 13px; border: none; border-radius: 6px; cursor: pointer; }
+        .btn-start { background-color: #10b981; color: white; }
+        .btn-start.recording { background-color: #065f46; animation: pulse 1s infinite; }
+        .btn-stop { background-color: #475569; color: white; margin-left: 6px; }
+        .btn-stop:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-re-rec { background-color: #3b82f6; color: white; margin-left: 6px; }
+        .btn-re-rec:disabled { opacity: 0.4; cursor: not-allowed; }
+        .wave-display-box { background: #0f172a; border-radius: 8px; padding: 15px; margin-top: 10px; display: none; position: relative; }
+        .wave-view { width: 100%; height: 75px; cursor: pointer; }
+        .indicator-container { position: relative; width: 100%; height: 35px; margin-top: 5px; overflow: hidden; }
+        .live-badge { position: absolute; white-space: nowrap; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: bold; transition: left 0.1s ease-out; }
+        .badge-trigger { color: #facc15; border: 1px solid rgba(234, 179, 8, 0.4); background: rgba(234, 179, 8, 0.1); }
+        .badge-emotion { color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.1); }
+        .loading-dots { animation: pulse 0.4s infinite alternate; color: #94a3b8; }
+        .comparison-vs-bridge { display: none; justify-content: center; gap: 40px; background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 15px; margin-bottom: 20px; }
+        .vs-item { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .vs-label { font-size: 12px; color: #64748b; font-weight: bold; margin-bottom: 4px; }
+        .vs-sign { font-size: 24px; font-weight: 900; color: #38bdf8; text-shadow: 0 0 10px rgba(56, 189, 248, 0.4); line-height: 1; }
+        #comparison-panel { display: none; background: #1e293b; border: 2px solid #38bdf8; border-radius: 12px; padding: 25px; margin-top: 25px; }
+        .panel-title { font-size: 18px; font-weight: bold; color: #38bdf8; margin-bottom: 12px; }
+        .panel-content { font-size: 15px; line-height: 1.7; color: #cbd5e1; }
+
+        /* ==========================================
+           [3페이지] 공고문 정밀 원본 유지 스크린
+           ========================================== */
+        #page-3 { background-color: #ffffff; }
+        /* 가로나 세로 어느 한곳도 찌그러지거나 잘리지 않게 완전 밀착 */
+        .notice-img {
+            width: 100%; height: 100%;
+            object-fit: contain; /* 👈 이미지 비율 깨짐 방지 및 딱 맞춤화 */
+        }
+
+        /* ==========================================
+           [4페이지] 영상 원본 비율 유지 및 팝업 QR 모듈
+           ========================================== */
+        #page-4 { background-color: #000000; }
+        /* 영상이 억지로 늘어나서 깍두기처럼 깨지는 현상 완벽 방어 */
+        .full-video {
+            width: 100%; height: 100%;
+            object-fit: contain; /* 👈 상하좌우 여백이 생기더라도 비디오 원본 비율 칼같이 유지 */
+            cursor: pointer;
+        }
+        
+        /* 시우 QR 오버레이 팝업 */
+        .qr-overlay {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.8); justify-content: center; align-items: center;
+            z-index: 10000;
+        }
+        /* QR 코드 역시 정비율 유지 장치 결합 */
+        .qr-img {
+            max-width: 90%; max-height: 70vh;
+            object-fit: contain;
+            border: 8px solid white; border-radius: 4px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        /* 모바일 전체 통합 터치 반응성 보완 매커니즘 */
+        @media (max-width: 600px) {
+            #page-2 { padding: 20px 75px; }
+            h1 { font-size: 18px; }
+            .top-bar { flex-direction: column; gap: 12px; }
+            .track-top { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .btn-zone { width: 100%; display: flex; }
+            .btn-zone button { flex: 1; font-size: 11px; padding: 8px 4px; }
+            .nav-btn { padding: 10px 14px; font-size: 12px; }
+            .nav-prev { left: 8px; }
+            .nav-next { right: 8px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="page-1" class="page-screen active">
+        <div class="bg-pixel-layer"></div>
+        <button class="btn-fight" onclick="goPage(2)">Fight!</button>
+    </div>
+
+    <div id="page-2" class="page-screen">
+        <button class="nav-btn nav-prev" onclick="goPage(1)">이전</button>
+        <button class="nav-btn nav-next" onclick="goPage(3)">다음</button>
+
+        <div class="container">
+            <h1>🎙️ AI 주파수 대조 매핑 대시보드</h1>
+            <div class="top-bar">
+                <div class="guide-zone">
+                    <div class="guide-item"><div class="color-box" style="background: rgba(234, 179, 8, 0.45); border: 1px solid #eab308;"></div> 트리거 범위 (노란색)</div>
+                    <div class="guide-item"><div class="color-box" style="background: rgba(56, 189, 248, 0.45); border: 1px solid #38bdf8;"></div> 감정 범위 (파란색)</div>
+                </div>
+                <button class="btn-reset" onclick="resetAllTracks()">🔄 아예 처음부터 다시하기</button>
+            </div>
+
+            <div class="track-card">
+                <div class="track-top">
+                    <div class="track-info">
+                        <span class="track-name">[표준 주파수 대조군] TRACK 01</span>
+                        <span class="track-script">"나는 <span style="color:#eab308;">오늘도</span> <span style="color:#38bdf8;">화가 난다</span>"</span>
+                    </div>
+                    <div class="btn-zone">
+                        <button class="btn-start" id="btn-start-1" onclick="recAction(1)">녹음</button>
+                        <button class="btn-stop" id="stop-1" onclick="stopAction(1)" disabled>종료</button>
+                        <button class="btn-re-rec" id="rerec-1" onclick="reRecordTrack(1)" disabled>재녹음</button>
+                    </div>
+                </div>
+                <div class="wave-display-box" id="wave-box-1">
+                    <div id="wave-1" class="wave-view"></div>
+                    <div class="indicator-container" id="ind-container-1"></div>
+                </div>
+            </div>
+
+            <div class="track-card">
+                <div class="track-top">
+                    <div class="track-info">
+                        <span class="track-name">변수 분석군 TRACK 02</span>
+                        <span class="track-script">"나는 <span style="color:#eab308;">나땜에</span> <span style="color:#38bdf8;">화가 난다</span>"</span>
+                    </div>
+                    <div class="btn-zone">
+                        <button class="btn-start" id="btn-start-2" onclick="recAction(2)">녹음</button>
+                        <button class="btn-stop" id="stop-2" onclick="stopAction(2)" disabled>종료</button>
+                        <button class="btn-re-rec" id="rerec-2" onclick="reRecordTrack(2)" disabled>재녹음</button>
+                    </div>
+                </div>
+                <div class="wave-display-box" id="wave-box-2">
+                    <div id="wave-2" class="wave-view"></div>
+                    <div class="indicator-container" id="ind-container-2"></div>
+                </div>
+            </div>
+
+            <div class="comparison-vs-bridge" id="vs-bridge">
+                <div class="vs-item">
+                    <div class="vs-label">💡 트리거 일치율 우위</div>
+                    <div class="vs-sign" id="vs-trigger-sign">=</div>
+                </div>
+                <div class="vs-item">
+                    <div class="vs-label">🔥 감정 일치율 우위</div>
+                    <div class="vs-sign" id="vs-emotion-sign">=</div>
+                </div>
+            </div>
+
+            <div class="track-card">
+                <div class="track-top">
+                    <div class="track-info">
+                        <span class="track-name">변수 분석군 TRACK 03</span>
+                        <span class="track-script">"나는 <span style="color:#eab308;">너땜에</span> <span style="color:#38bdf8;">화가 난다</span>"</span>
+                    </div>
+                    <div class="btn-zone">
+                        <button class="btn-start" id="btn-start-3" onclick="recAction(3)">녹음</button>
+                        <button class="btn-stop" id="stop-3" onclick="stopAction(3)" disabled>종료</button>
+                        <button class="btn-re-rec" id="rerec-3" onclick="reRecordTrack(3)" disabled>재녹음</button>
+                    </div>
+                </div>
+                <div class="wave-display-box" id="wave-box-3">
+                    <div id="wave-3" class="wave-view"></div>
+                    <div class="indicator-container" id="ind-container-3"></div>
+                </div>
+            </div>
+
+            <div id="comparison-panel">
+                <div class="panel-title">🎯 실시간 주파수 패턴 매핑 피드백</div>
+                <div class="panel-content">선택 영역 분석 완료. 대시보드의 두 가변 주파수 파형 배열 간 일치도 튜닝 매핑이 실시간 적용되었습니다.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="page-3" class="page-screen">
+        <button class="nav-btn nav-prev" onclick="goPage(2)">이전</button>
+        <button class="nav-btn nav-next" onclick="goPage(4)">다음</button>
+        <img src="공고문.png" alt="공고문 이미지" class="notice-img">
+    </div>
+
+    <div id="page-4" class="page-screen">
+        <button class="nav-btn nav-prev" onclick="goPage(3)">이전</button>
+        
+        <video class="full-video" id="interactive-video" autoplay muted playsinline onclick="showQrOverlay()">
+            <source src="차선책.mp4" type="video/mp4">
+        </video>
+
+        <div class="qr-overlay" id="qr-popup" onclick="hideQrOverlay(event)">
+            <img src="시우 QR.png" alt="시우 QR" class="qr-img">
+        </div>
+    </div>
+
+<script>
+    // 페이지 네비게이션 컨트롤러
+    function goPage(pageNumber) {
+        document.querySelectorAll('.page-screen').forEach(page => {
+            page.classList.remove('active');
+        });
+        document.getElementById(`page-${pageNumber}`).classList.add('active');
+        window.scrollTo(0,0);
+
+        if(pageNumber === 4) {
+            const v = document.getElementById('interactive-video');
+            if(v) v.play().catch(()=>{});
+        }
+    }
+
+    function showQrOverlay() { document.getElementById('qr-popup').style.display = 'flex'; }
+    function hideQrOverlay(e) { e.stopPropagation(); document.getElementById('qr-popup').style.display = 'none'; }
+
+    // 2페이지 비즈니스 로직
+    let resetCount = 0; 
+    let t2Adjust = 0, t3Adjust = 0; 
+    let e2Adjust = 0, e3Adjust = 0; 
+
+    let masterBonus = { 2: { T: 0, E: 0 }, 3: { T: 0, E: 0 } };
+    let currentScores = { 2: { T: 0, E: 0 }, 3: { T: 0, E: 0 } };
+    let updateTimers = { 1: { T: null, E: null }, 2: { T: null, E: null }, 3: { T: null, E: null } };
+
+    const appData = {
+        1: { url: null, recorder: null, chunks: [], audioBuffer: null, ws: null, regions: null },
+        2: { url: null, recorder: null, chunks: [], audioBuffer: null, ws: null, regions: null },
+        3: { url: null, recorder: null, chunks: [], audioBuffer: null, ws: null, regions: null }
+    };
+
+    async function recAction(id) {
+        const t = appData[id]; t.chunks = [];
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            t.recorder = new MediaRecorder(stream);
+            t.recorder.ondataavailable = e => { if (e.data.size > 0) t.chunks.push(e.data); };
+            t.recorder.onstop = async () => {
+                const blob = new Blob(t.chunks, { type: 'audio/wav' });
+                t.url = URL.createObjectURL(blob);
+                const arrayBuffer = await blob.arrayBuffer();
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                t.audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                document.getElementById(`btn-start-${id}`).innerText = "스캔 완료";
+                document.getElementById(`btn-start-${id}`).disabled = true;
+                document.getElementById(`rerec-${id}`).disabled = false;
+                renderTrackWave(id);
+            };
+            t.recorder.start();
+            document.getElementById(`btn-start-${id}`).classList.add('recording');
+            document.getElementById(`btn-start-${id}`).innerText = "🛑 녹음 중";
+            document.getElementById(`stop-${id}`).disabled = false;
+            document.getElementById(`rerec-${id}`).disabled = true;
+        } catch (err) {
+            alert("마이크 에러가 발생했습니다.");
+        }
+    }
+
+    function stopAction(id) {
+        const t = appData[id];
+        if (t.recorder && t.recorder.state !== "inactive") {
+            t.recorder.stop(); t.recorder.stream.getTracks().forEach(track => track.stop());
+            document.getElementById(`btn-start-${id}`).classList.remove('recording');
+            document.getElementById(`stop-${id}`).disabled = true;
+        }
+    }
+
+    function reRecordTrack(id) {
+        const t = appData[id];
+        if (t.ws) { t.ws.destroy(); t.ws = null; }
+        t.url = null; t.chunks = []; t.audioBuffer = null;
+        document.getElementById(`btn-start-${id}`).innerText = "녹음";
+        document.getElementById(`btn-start-${id}`).disabled = false;
+        document.getElementById(`stop-${id}`).disabled = true;
+        document.getElementById(`rerec-${id}`).disabled = true;
+        document.getElementById(`wave-box-${id}`).style.display = "none";
+        document.getElementById(`ind-container-${id}`).innerHTML = "";
+        if (id > 1) currentScores[id] = { T: 0, E: 0 };
+        updateVSBridgeSign(); recAction(id);
+    }
+
+    function findVoiceStartOffset(audioBuffer) {
+        const rawData = audioBuffer.getChannelData(0); const sampleRate = audioBuffer.sampleRate;
+        const frameSize = Math.floor(sampleRate * 0.02);
+        for (let i = 0; i < rawData.length; i += frameSize) {
+            let sum = 0; for (let j = 0; j < frameSize && (i + j) < rawData.length; j++) { sum += Math.abs(rawData[i + j]); }
+            if ((sum / frameSize) > 0.025) return i / sampleRate;
+        }
+        return audioBuffer.duration * 0.15;
+    }
+
+    function renderTrackWave(id) {
+        const t = appData[id]; document.getElementById(`wave-box-${id}`).style.display = "block";
+        if (t.ws) t.ws.destroy();
+        t.ws = WaveSurfer.create({
+            container: `#wave-${id}`, waveColor: '#334155', progressColor: '#38bdf8',
+            height: 75, barWidth: 2, url: t.url, interact: true
+        });
+        t.regions = t.ws.registerPlugin(WaveSurfer.Regions.create());
+        const voiceStart = findVoiceStartOffset(t.audioBuffer);
+
+        t.ws.on('ready', () => {
+            const duration = t.ws.getDuration();
+            let triggerStart = voiceStart + 0.3; let triggerEnd = triggerStart + 1.1;
+            let emotionStart = triggerEnd + 0.1; let emotionEnd = Math.min(duration, emotionStart + 1.5);
+            if (triggerStart >= duration) { triggerStart = duration * 0.2; triggerEnd = duration * 0.5; emotionStart = duration * 0.55; emotionEnd = duration * 0.95; }
+
+            const rTrigger = t.regions.addRegion({ start: triggerStart, end: triggerEnd, color: 'rgba(234, 179, 8, 0.4)', id: 'trigger-zone', drag: true, resize: true });
+            const rEmotion = t.regions.addRegion({ start: emotionStart, end: emotionEnd, color: 'rgba(56, 189, 248, 0.4)', id: 'emotion-zone', drag: true, resize: true });
+
+            const container = document.getElementById(`ind-container-${id}`);
+            container.innerHTML = `
+                <div class="live-badge badge-trigger" id="badge-t-${id}">트리거 일치율: <span class="loading-dots">...</span></div>
+                <div class="live-badge badge-emotion" id="badge-e-${id}">감정 일치율: <span class="loading-dots">...</span></div>
+            `;
+            repositionBadge(id, rTrigger, 'badge-t-'); repositionBadge(id, rEmotion, 'badge-e-');
+
+            setTimeout(() => { displayInitialPercent(id, 'T'); displayInitialPercent(id, 'E'); updateVSBridgeSign(); }, 1000);
+            checkFinalStatus();
+        });
+
+        t.regions.on('region-updated', (region) => {
+            if (region.id === 'trigger-zone') {
+                repositionBadge(id, region, 'badge-t-');
+                clearTimeout(updateTimers[id].T);
+                document.getElementById(`badge-t-${id}`).innerHTML = `${id===1?'표준 트리거':'트리거 일치율'}: <span class="loading-dots">...</span>`;
+                updateTimers[id].T = setTimeout(() => { triggerLoadingCompleted(id, 'T'); }, 500);
+            } else if (region.id === 'emotion-zone') {
+                repositionBadge(id, region, 'badge-e-');
+                clearTimeout(updateTimers[id].E);
+                document.getElementById(`badge-e-${id}`).innerHTML = `${id===1?'표준 감정선':'감정 일치율'}: <span class="loading-dots">...</span>`;
+                updateTimers[id].E = setTimeout(() => { triggerLoadingCompleted(id, 'E'); }, 500);
+            }
+        });
+        t.ws.on('interaction', () => { t.ws.play(); });
+        t.regions.on('region-click', (region, event) => { event.stopPropagation(); region.play(); });
+    }
+
+    function repositionBadge(id, region, prefix) {
+        const badge = document.getElementById(`${prefix}${id}`); if (!badge) return;
+        const totalDuration = appData[id].ws.getDuration(); const ratio = region.start / totalDuration;
+        const containerWidth = document.getElementById(`ind-container-${id}`).offsetWidth;
+        badge.style.left = `${ratio * containerWidth}px`;
+    }
+
+    function displayInitialPercent(id, type) {
+        const b = document.getElementById(`badge-${type.toLowerCase()}-${id}`);
+        if (id === 1) { b.innerText = type === 'T' ? "표준 트리거" : "표준 감정선"; return; }
+        let score = 0;
+        if (resetCount === 0) { if (type === 'T') { score = (id === 2) ? 78 : 46; } else { score = (id === 2) ? 43 : 75; } } 
+        else if (resetCount === 1) { if (type === 'T') { score = (id === 2) ? 56 : 68; } else { score = (id === 2) ? 65 : 52; } } 
+        else {
+            if (type === 'T') { score = (id === 2) ? (84 + (resetCount - 1) * 2) : (48 + (resetCount - 1) * 2); } 
+            else { score = (id === 2) ? (45 + (resetCount - 1) * 2) : (81 + (resetCount - 1) * 2); }
+        }
+        score += masterBonus[id][type]; currentScores[id][type] = score;
+        b.innerText = `${type === 'T' ? '트리거' : '감정'} 일치율: ${score}%`;
+    }
+
+    function triggerLoadingCompleted(id, type) {
+        const b = document.getElementById(`badge-${type.toLowerCase()}-${id}`);
+        if (id === 1) {
+            b.innerText = type === 'T' ? "표준 트리거" : "표준 감정선";
+            if (type === 'T') { masterBonus[2].T += 1; masterBonus[3].T += 2; } else { masterBonus[2].E += 2; masterBonus[3].E += 3; }
+            if(appData[2].ws) displayInitialPercent(2, type); if(appData[3].ws) displayInitialPercent(3, type);
+            updateVSBridgeSign(); return;
+        }
+        let res = 0;
+        if (resetCount === 0) {
+            if (type === 'T') { if (id === 2) { res = 84 + t2Adjust; t2Adjust++; } if (id === 3) { res = 48 + t3Adjust; t3Adjust++; } } 
+            else { if (id === 2) { res = 45 + e2Adjust; e2Adjust++; } if (id === 3) { res = 81 + e3Adjust; e3Adjust++; } }
+        } else if (resetCount === 1) {
+            if (type === 'T') { if (id === 2) { res = 54 + t2Adjust; t2Adjust++; } if (id === 3) { res = 70 + t3Adjust; t3Adjust++; } } 
+            else { if (id === 2) { res = 68 + e2Adjust; e2Adjust++; } if (id === 3) { res = 54 + e3Adjust; e3Adjust++; } }
+        } else {
+            if (type === 'T') { if (id === 2) { res = 84 + ((resetCount - 1) * 2) + t2Adjust; t2Adjust++; } if (id === 3) { res = 48 + ((resetCount - 1) * 2) + t3Adjust; t3Adjust++; } } 
+            else { if (id === 2) { res = 45 + ((resetCount - 1) * 2) + e2Adjust; e2Adjust++; } if (id === 3) { res = 81 + ((resetCount - 1) * 2) + e3Adjust; e3Adjust++; } }
+        }
+        res += masterBonus[id][type]; currentScores[id][type] = res;
+        b.innerText = `${type === 'T' ? '트리거' : '감정'} 일치율: ${res}%`; updateVSBridgeSign();
+    }
+
+    function updateVSBridgeSign() {
+        if (!appData[2].ws || !appData[3].ws) return;
+        document.getElementById('vs-bridge').style.display = "flex";
+        const tSign = document.getElementById('vs-trigger-sign'); const eSign = document.getElementById('vs-emotion-sign');
+        if (currentScores[2].T > currentScores[3].T) { tSign.innerText = "▲ (TRACK 02 우세)"; tSign.style.color = "#facc15"; } else if (currentScores[2].T < currentScores[3].T) { tSign.innerText = "▼ (TRACK 03 우세)"; tSign.style.color = "#ef4444"; } else { tSign.innerText = "="; tSign.style.color = "#64748b"; }
+        if (currentScores[2].E > currentScores[3].E) { eSign.innerText = "▲ (TRACK 02 우세)"; eSign.style.color = "#38bdf8"; } else if (currentScores[2].E < currentScores[3].E) { eSign.innerText = "▼ (TRACK 03 우세)"; eSign.style.color = "#ef4444"; } else { eSign.innerText = "="; eSign.style.color = "#64748b"; }
+    }
+
+    function resetAllTracks() {
+        resetCount++; t2Adjust = 0; t3Adjust = 0; e2Adjust = 0; e3Adjust = 0;
+        masterBonus = { 2: { T: 0, E: 0 }, 3: { T: 0, E: 0 } }; currentScores = { 2: { T: 0, E: 0 }, 3: { T: 0, E: 0 } };
+        document.getElementById('comparison-panel').style.display = "none"; document.getElementById('vs-bridge').style.display = "none";
+        for (let i = 1; i <= 3; i++) {
+            const t = appData[i]; if (t.ws) { t.ws.destroy(); t.ws = null; }
+            t.url = null; t.chunks = []; t.audioBuffer = null;
+            document.getElementById(`btn-start-${i}`).innerText = "녹음"; document.getElementById(`btn-start-${i}`).disabled = false; document.getElementById(`stop-${i}`).disabled = true; document.getElementById(`rerec-${i}`).disabled = true; document.getElementById(`wave-box-${i}`).style.display = "none";
+        }
+        alert(`대시보드가 전체 리셋되었습니다.`);
+    }
+
+    function checkFinalStatus() { if (appData[1].ws && appData[2].ws && appData[3].ws) { document.getElementById('comparison-panel').style.display = "block"; updateVSBridgeSign(); } }
+</script>
+</body>
+</html>
